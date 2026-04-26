@@ -73,6 +73,3 @@ masker/
 - Зависимости (устанавливаются автоматически через go mod tidy):
   - github.com/stretchr/testify (только для тестов)
 
-Лицензия
-
-MIT

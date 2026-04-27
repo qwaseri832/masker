@@ -7,28 +7,31 @@ import (
 )
 
 func main() {
-    // Проверка аргументов
-    if len(os.Args) < 2 {
-        fmt.Println("Использование: go run . <входной_файл> [выходной_файл]")
-        return
-    }
-
-    inputPath := os.Args[1]
-    outputPath := "output.txt"
-    if len(os.Args) >= 3 {
-        outputPath = os.Args[2]
-    }
-
-    // Создание компонентов
-    prod := masker.NewFileProducer(inputPath)
-    pres := masker.NewFilePresenter(outputPath)
-
-    // Создание и запуск сервиса
-    svc := masker.NewService(prod, pres)
-    if err := svc.Run(); err != nil {
-        fmt.Fprintln(os.Stderr, "Ошибка:", err)
+    if err := run(); err != nil {
+        fmt.Fprintln(os.Stderr, "Error:", err)
         os.Exit(1)
     }
+}
 
-    fmt.Println("Готово! Результат в", outputPath)
+func run() error {
+    inputPath, outputPath := parseArgs()
+
+    prod := masker.NewFileProducer(inputPath)
+    pres := masker.NewFilePresenter(outputPath)
+    maskerImpl := masker.DigitsMasker{} // стратегия маскирования
+
+    svc := masker.NewService(prod, pres, maskerImpl)
+    return svc.Run()
+}
+
+func parseArgs() (string, string) {
+    input := "input.txt"
+    output := "output.txt"
+    if len(os.Args) >= 2 {
+        input = os.Args[1]
+    }
+    if len(os.Args) >= 3 {
+        output = os.Args[2]
+    }
+    return input, output
 }

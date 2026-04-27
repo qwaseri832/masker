@@ -60,3 +60,20 @@ func TestRunProducerError(t *testing.T) {
 		t.Error("present should not be called on producer error")
 	}
 }
+func TestDigitsMasker(t *testing.T) {
+    m := DigitsMasker{}
+    tests := []struct {
+        input    string
+        expected string
+    }{
+        {"abc123", "abc***"},
+        {"no digits", "no digits"},
+        {"123", "***"},
+    }
+    for _, tt := range tests {
+        result := m.Mask(tt.input)
+        if result != tt.expected {
+            t.Errorf("Mask(%q) = %q, expected %q", tt.input, result, tt.expected)
+        }
+    }
+}

@@ -1,49 +1,43 @@
 package masker
 
-// Producer интерфейс поставщика данных
+// Producer поставщик данных
 type Producer interface {
-	Produce() ([]string, error)
+    Produce() ([]string, error)
 }
 
-// Presenter интерфейс отображения результата
+// Presenter обработчик вывода
 type Presenter interface {
-	Present([]string) error
+    Present([]string) error
 }
 
-// Service структура с бизнес-логикой
+// Service — основная бизнес-логика
 type Service struct {
-	producer  Producer
-	presenter Presenter
+    prod   Producer
+    pres   Presenter
+    masker Masker // добавлено поле для стратегии маскирования
 }
 
-// NewService конструктор
-func NewService(p Producer, pr Presenter) *Service {
-	return &Service{producer: p, presenter: pr}
+// NewService — конструктор сервиса
+func NewService(prod Producer, pres Presenter, masker Masker) *Service {
+    return &Service{
+        prod:   prod,
+        pres:   pres,
+        masker: masker,
+    }
 }
 
-// функция маскирования (НЕ метод, просто функция, сигнатура не менялась)
-func maskData(data []string) []string {
-	result := make([]string, len(data))
-	for i, line := range data {
-		masked := ""
-		for _, ch := range line {
-			if ch >= '0' && ch <= '9' {
-				masked += "*"
-			} else {
-				masked += string(ch)
-			}
-		}
-		result[i] = masked
-	}
-	return result
-}
-
-// Run главный метод
+// Run — главный метод сервиса
 func (s *Service) Run() error {
-	raw, err := s.producer.Produce()
-	if err != nil {
-		return err
-	}
-	masked := maskData(raw)
-	return s.presenter.Present(masked)
+    raw, err := s.prod.Produce()
+    if err != nil {
+        return err
+    }
+
+    // применяем стратегию маскирования к каждой строке
+    masked := make([]string, len(raw))
+    for i, line := range raw {
+        masked[i] = s.masker.Mask(line)
+    }
+
+    return s.pres.Present(masked)
 }

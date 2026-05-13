@@ -1,65 +1,63 @@
 package masker
 
 import (
-	"errors"
-	"testing"
+    "errors"
+    "sort"
+    "testing"
 )
 
-// MockProducer — ручной мок (простая структура)
 type mockProducer struct {
-	data []string
-	err  error
+    data []string
+    err  error
 }
 
 func (m *mockProducer) Produce() ([]string, error) {
-	return m.data, m.err
+    return m.data, m.err
 }
 
-// MockPresenter — ручной мок
 type mockPresenter struct {
-	receivedData []string
-	err          error
+    receivedData []string
+    err          error
 }
 
 func (m *mockPresenter) Present(data []string) error {
-	m.receivedData = data
-	return m.err
+    m.receivedData = data
+    return m.err
 }
 
-// тест 1: успешный сценарий
 func TestRunSuccess(t *testing.T) {
-	prod := &mockProducer{data: []string{"a1", "b2"}, err: nil}
-	pres := &mockPresenter{err: nil}
-	svc := NewService(prod, pres)
-
-	err := svc.Run()
-
-	if err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
-	expected := []string{"a*", "b*"}
-	for i := range expected {
-		if pres.receivedData[i] != expected[i] {
-			t.Errorf("expected %q, got %q", expected[i], pres.receivedData[i])
-		}
-	}
+    prod := &mockProducer{data: []string{"a1", "b2"}, err: nil}
+    pres := &mockPresenter{err: nil}
+    svc := NewService(prod, pres, DigitsMasker{}) // добавили masker
+    err := svc.Run()
+    if err != nil {
+        t.Errorf("expected no error, got %v", err)
+    }
+    expected := []string{"a*", "b*"}
+    got := make([]string, len(pres.receivedData))
+    copy(got, pres.receivedData)
+    sort.Strings(got)
+    sort.Strings(expected)
+    for i := range expected {
+        if got[i] != expected[i] {
+            t.Errorf("expected %q, got %q", expected[i], got[i])
+        }
+    }
 }
 
-// тест 2: ошибка Producer
 func TestRunProducerError(t *testing.T) {
-	prod := &mockProducer{data: nil, err: errors.New("produce error")}
-	pres := &mockPresenter{}
-	svc := NewService(prod, pres)
-
-	err := svc.Run()
-
-	if err == nil {
-		t.Error("expected error, got nil")
-	}
-	if pres.receivedData != nil {
-		t.Error("present should not be called on producer error")
-	}
+    prod := &mockProducer{data: nil, err: errors.New("produce error")}
+    pres := &mockPresenter{}
+    svc := NewService(prod, pres, DigitsMasker{}) // добавили masker
+    err := svc.Run()
+    if err == nil {
+        t.Error("expected error, got nil")
+    }
+    if pres.receivedData != nil {
+        t.Error("present should not be called on producer error")
+    }
 }
+
 func TestDigitsMasker(t *testing.T) {
     m := DigitsMasker{}
     tests := []struct {

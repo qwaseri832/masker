@@ -1,34 +1,34 @@
 package masker
-
+ 
 import (
 	"context"
 	"fmt"
 	"log/slog"
 	"sync"
 )
-
+ 
 // Producer — поставщик данных
 type Producer interface {
 	Produce() ([]string, error)
 }
-
+ 
 // Presenter — обработчик вывода
 type Presenter interface {
 	Present([]string) error
 }
-
+ 
 // job — задача для воркера: индекс строки и её текст
 type job struct {
 	index int
 	text  string
 }
-
+ 
 // result — результат воркера: индекс строки и замаскированный текст
 type result struct {
 	index int
 	text  string
 }
-
+ 
 // Service — основная бизнес-логика
 type Service struct {
 	prod   Producer
@@ -36,7 +36,7 @@ type Service struct {
 	masker Masker
 	logger *slog.Logger
 }
-
+ 
 // NewService — конструктор сервиса
 func NewService(prod Producer, pres Presenter, masker Masker, logger *slog.Logger) *Service {
 	return &Service{
@@ -46,14 +46,14 @@ func NewService(prod Producer, pres Presenter, masker Masker, logger *slog.Logge
 		logger: logger,
 	}
 }
-
+ 
 // Run — главный метод сервиса.
 // Читает строки, запускает worker pool (до 10 горутин), маскирует параллельно,
 // собирает результаты в правильном порядке и записывает в файл.
 // Все горутины завершаются при отмене контекста (Ctrl+C).
 func (s *Service) Run(ctx context.Context) error {
 	s.logger.DebugContext(ctx, "service: starting")
-
+ 
 	// --- чтение входных данных ---
 	s.logger.DebugContext(ctx, "producer: reading input file")
 	raw, err := s.prod.Produce()
@@ -62,12 +62,12 @@ func (s *Service) Run(ctx context.Context) error {
 		return fmt.Errorf("producer error: %w", err)
 	}
 	s.logger.InfoContext(ctx, "producer: input file read", slog.Int("lines", len(raw)))
-
+ 
 	if len(raw) == 0 {
 		s.logger.WarnContext(ctx, "producer: input file is empty, nothing to mask")
 		return s.pres.Present([]string{})
 	}
-
+ 
 	// --- настройка worker pool ---
 	numWorkers := 10
 	if len(raw) < numWorkers {
@@ -77,17 +77,17 @@ func (s *Service) Run(ctx context.Context) error {
 		slog.Int("workers", numWorkers),
 		slog.Int("jobs", len(raw)),
 	)
-
+ 
 	jobsCh := make(chan job, len(raw))
 	resultsCh := make(chan result, len(raw))
-
+ 
 	// заполняем канал задачами
 	for i, line := range raw {
 		jobsCh <- job{index: i, text: line}
 	}
 	close(jobsCh)
 	s.logger.DebugContext(ctx, "worker pool: jobs channel filled and closed")
-
+ 
 	// --- запуск воркеров ---
 	var wg sync.WaitGroup
 	for w := 0; w < numWorkers; w++ {
@@ -96,7 +96,7 @@ func (s *Service) Run(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			s.logger.DebugContext(ctx, "worker: started", slog.Int("worker_id", workerID))
-
+ 
 			for {
 				// проверяем отмену контекста перед каждой задачей
 				select {
@@ -107,7 +107,7 @@ func (s *Service) Run(ctx context.Context) error {
 					return
 				default:
 				}
-
+ 
 				j, ok := <-jobsCh
 				if !ok {
 					s.logger.DebugContext(ctx, "worker: jobs channel closed, finishing",
@@ -115,18 +115,18 @@ func (s *Service) Run(ctx context.Context) error {
 					)
 					return
 				}
-
+ 
 				s.logger.DebugContext(ctx, "worker: processing line",
 					slog.Int("worker_id", workerID),
 					slog.Int("line_index", j.index),
 				)
-
+ 
 				masked := s.masker.Mask(j.text)
 				resultsCh <- result{index: j.index, text: masked}
 			}
 		}()
 	}
-
+ 
 	// --- горутина-коллектор: ждёт всех воркеров, затем закрывает канал результатов ---
 	go func() {
 		s.logger.DebugContext(ctx, "collector: waiting for all workers to finish")
@@ -134,7 +134,7 @@ func (s *Service) Run(ctx context.Context) error {
 		s.logger.DebugContext(ctx, "collector: all workers done, closing results channel")
 		close(resultsCh)
 	}()
-
+ 
 	// --- сбор результатов с проверкой контекста ---
 	masked := make([]string, len(raw))
 	collected := 0
@@ -159,10 +159,10 @@ func (s *Service) Run(ctx context.Context) error {
 			)
 		}
 	}
-
+ 
 done:
 	s.logger.InfoContext(ctx, "service: masking complete", slog.Int("lines_processed", collected))
-
+ 
 	// --- запись результата ---
 	s.logger.DebugContext(ctx, "presenter: writing output file")
 	if err := s.pres.Present(masked); err != nil {
@@ -170,7 +170,8 @@ done:
 		return fmt.Errorf("presenter error: %w", err)
 	}
 	s.logger.InfoContext(ctx, "presenter: output file written successfully")
-
+ 
 	s.logger.DebugContext(ctx, "service: finished")
 	return nil
 }
+ 

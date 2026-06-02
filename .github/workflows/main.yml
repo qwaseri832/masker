@@ -1,26 +1,33 @@
-name: Run Tests
-
+name: Tests
+ 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
+ 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Go
-        uses: actions/setup-go@v5
+ 
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'  # ← поменяйте на стабильную версию, не 1.26
-      
-      - name: Install dependencies
+          go-version: '1.22'
+ 
+      - name: Download dependencies
+        run: go mod tidy
+ 
+      - name: Run tests with coverage
+        run: go test -coverprofile=coverage.out ./masker/
+ 
+      - name: Show coverage
+        run: go tool cover -func=coverage.out
+ 
+      - name: Coverage threshold check
         run: |
-          go mod download
-          go get github.com/stretchr/testify  # ← добавить
-      
-      - name: Run tests
-        run: go test -v -cover ./...
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: $COVERAGE%"
+          awk "BEGIN { if ($COVERAGE < 85) { print \"FAIL: coverage below 85%\"; exit 1 } else { print \"OK: coverage is \" $COVERAGE \"%\" } }"
+ 

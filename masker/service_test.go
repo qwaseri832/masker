@@ -1,3 +1,4 @@
+e test · GO
 package masker
  
 import (

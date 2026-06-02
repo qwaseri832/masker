@@ -1,21 +1,17 @@
 package masker
 
-// Masker — интерфейс стратегии маскирования
-type Masker interface {
-    Mask(line string) string
+type Masker struct {
+    // структура для маскирования данных
 }
 
-// DigitsMasker — заменяет все цифры на *
-type DigitsMasker struct{}
+func NewMasker() *Masker {
+    return &Masker{}
+}
 
-func (m DigitsMasker) Mask(line string) string {
-    out := ""
-    for _, ch := range line {
-        if ch >= '0' && ch <= '9' {
-            out += "*"
-        } else {
-            out += string(ch)
-        }
+func (m *Masker) Mask(data string) string {
+    // простая реализация
+    if len(data) <= 4 {
+        return "****"
     }
-    return out
+    return data[:2] + "****" + data[len(data)-2:]
 }

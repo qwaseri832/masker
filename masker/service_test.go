@@ -159,11 +159,14 @@ func TestServiceRunWithContextCancelDuringProcessing(t *testing.T) {
     ctx, cancel := context.WithCancel(context.Background())
 
     go func() {
-        time.Sleep(10 * time.Millisecond)
+        time.Sleep(5 * time.Millisecond)
         cancel()
     }()
 
     err := svc.Run(ctx)
 
-    assert.Error(t, err)
+    // Проверяем, что ошибка не nil (либо context.Canceled, либо другая)
+    if err == nil {
+        t.Errorf("Expected error (likely context.Canceled), got nil")
+    }
 }

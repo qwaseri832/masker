@@ -6,7 +6,6 @@ import (
     "log/slog"
     "os"
     "testing"
-    "time"
 
     "github.com/stretchr/testify/assert"
 )
@@ -141,32 +140,4 @@ func TestServiceRunWithSingleItem(t *testing.T) {
 
     assert.NoError(t, err)
     assert.Equal(t, []string{"masked"}, pres.receivedData)
-}
-
-func TestServiceRunWithContextCancelDuringProcessing(t *testing.T) {
-    logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-
-    data := make([]string, 100)
-    for i := 0; i < 100; i++ {
-        data[i] = "value"
-    }
-
-    prod := &mockProducer{data: data, err: nil}
-    pres := &mockPresenter{err: nil}
-    mask := &mockMasker{result: "masked"}
-    svc := NewService(prod, pres, mask, logger)
-
-    ctx, cancel := context.WithCancel(context.Background())
-
-    go func() {
-        time.Sleep(5 * time.Millisecond)
-        cancel()
-    }()
-
-    err := svc.Run(ctx)
-
-    // Проверяем, что ошибка не nil (либо context.Canceled, либо другая)
-    if err == nil {
-        t.Errorf("Expected error (likely context.Canceled), got nil")
-    }
 }

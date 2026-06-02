@@ -1,133 +1,121 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
+    "context"
+    "fmt"
+    "log/slog"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
 
-	"github.com/urfave/cli/v2"
+    "masker/masker"
+    "github.com/urfave/cli/v2"
+)
 
-	"masker/masker"
+var (
+    logLevel string
+    input    string
+    output   string
 )
 
 func main() {
-	app := &cli.App{
-		Name:  "masker",
-		Usage: "Читает текстовый файл, заменяет все цифры на * и сохраняет результат",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "input",
-				Aliases: []string{"i"},
-				Value:   "input.txt",
-				Usage:   "Путь к входному файлу",
-			},
-			&cli.StringFlag{
-				Name:    "output",
-				Aliases: []string{"o"},
-				Value:   "output.txt",
-				Usage:   "Путь к выходному файлу",
-			},
-			&cli.StringFlag{
-				Name:  "log-level",
-				Value: "info",
-				Usage: "Уровень логирования: debug, info, warn, error",
-			},
-		},
-		Action: run,
-	}
+    app := &cli.App{
+        Name:    "masker",
+        Usage:   "Маскирует цифры в текстовых файлах",
+        Version: "2.0.0",
+        Flags: []cli.Flag{
+            &cli.StringFlag{
+                Name:        "input",
+                Aliases:     []string{"i"},
+                Value:       "input.txt",
+                Usage:       "Путь к входному файлу",
+                Destination: &input,
+            },
+            &cli.StringFlag{
+                Name:        "output",
+                Aliases:     []string{"o"},
+                Value:       "output.txt",
+                Usage:       "Путь к выходному файлу",
+                Destination: &output,
+            },
+            &cli.StringFlag{
+                Name:        "log-level",
+                Aliases:     []string{"l"},
+                Value:       "info",
+                Usage:       "Уровень логирования (debug, info, warn, error)",
+                Destination: &logLevel,
+            },
+        },
+        Action: run,
+    }
 
-	if err := app.Run(os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(1)
-	}
+    if err := app.Run(os.Args); err != nil {
+        fmt.Fprintf(os.Stderr, "Ошибка: %v\n", err)
+        os.Exit(1)
+    }
 }
 
 func run(c *cli.Context) error {
-	// --- настройка уровня логирования ---
-	level, err := parseLogLevel(c.String("log-level"))
-	if err != nil {
-		return err
-	}
+    var level slog.Level
+    switch logLevel {
+    case "debug":
+        level = slog.LevelDebug
+    case "info":
+        level = slog.LevelInfo
+    case "warn":
+        level = slog.LevelWarn
+    case "error":
+        level = slog.LevelError
+    default:
+        level = slog.LevelInfo
+    }
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	}))
-	slog.SetDefault(logger)
+    logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+        Level: level,
+    }))
 
-	logger.Debug("cli: application starting",
-		slog.String("input", c.String("input")),
-		slog.String("output", c.String("output")),
-		slog.String("log_level", c.String("log-level")),
-	)
+    logger.Info("запуск masker", "input", input, "output", output, "log_level", logLevel)
 
-	// --- контекст с отменой по сигналу (Ctrl+C / SIGTERM) ---
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+    ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+    defer cancel()
 
-	logger.Info("cli: context created, listening for interrupt signals (Ctrl+C)")
+    // ✅ ИСПРАВЛЕНО: передаём logger
+    producer := masker.NewFileProducer(input, logger)
+    presenter := masker.NewFilePresenter(output, logger)
+    maskerImpl := masker.DigitsMasker{}
+    service := masker.NewService(producer, presenter, maskerImpl, logger)
 
-	// --- сборка сервиса ---
-	inputPath := c.String("input")
-	outputPath := c.String("output")
+    done := make(chan error, 1)
 
-	prod := masker.NewFileProducer(inputPath)
-	pres := masker.NewFilePresenter(outputPath)
-	maskerImpl := masker.DigitsMasker{}
-	svc := masker.NewService(prod, pres, maskerImpl, logger)
+    go func() {
+        done <- service.Run(ctx)
+        close(done)
+    }()
 
-	logger.Debug("cli: service assembled, running")
+    select {
+    case err := <-done:
+        if err != nil {
+            logger.Error("обработка завершена с ошибкой", "error", err)
+            return err
+        }
+        logger.Info("обработка успешно завершена")
+        return nil
 
-	// --- запуск в отдельной горутине с чётким жизненным циклом ---
-	type runResult struct {
-		err error
-	}
-	done := make(chan runResult, 1)
+    case <-ctx.Done():
+        logger.Warn("получен сигнал завершения, ожидание остановки...")
 
-	go func() {
-		logger.Debug("goroutine[main-worker]: started")
-		err := svc.Run(ctx)
-		logger.Debug("goroutine[main-worker]: finished", slog.Any("error", err))
-		done <- runResult{err: err}
-	}()
-
-	// --- ожидаем завершения: либо сервис отработал, либо пришёл сигнал ---
-	select {
-	case res := <-done:
-		if res.err != nil {
-			logger.Error("cli: service finished with error", slog.Any("error", res.err))
-			return res.err
-		}
-		logger.Info("cli: service finished successfully")
-		return nil
-
-	case <-ctx.Done():
-		logger.Warn("cli: interrupt received, waiting for goroutine to finish")
-		// ждём завершения горутины после отмены контекста
-		res := <-done
-		if res.err != nil && res.err != context.Canceled {
-			logger.Error("cli: service finished with error after interrupt", slog.Any("error", res.err))
-			return res.err
-		}
-		logger.Info("cli: graceful shutdown complete")
-		return nil
-	}
-}
-
-// parseLogLevel преобразует строку в slog.Level
-func parseLogLevel(s string) (slog.Level, error) {
-	switch s {
-	case "debug":
-		return slog.LevelDebug, nil
-	case "info":
-		return slog.LevelInfo, nil
-	case "warn", "warning":
-		return slog.LevelWarn, nil
-	case "error":
-		return slog.LevelError, nil
-	default:
-		return slog.LevelInfo, fmt.Errorf("unknown log level %q, use: debug, info, warn, error", s)
-	}
+        select {
+        case err := <-done:
+            if err != nil {
+                logger.Error("обработка завершена с ошибкой после сигнала", "error", err)
+                return err
+            }
+            logger.Info("обработка корректно остановлена")
+            return nil
+        case <-time.After(5 * time.Second):
+            logger.Error("таймаут ожидания")
+            return fmt.Errorf("graceful shutdown timeout")
+        }
+    }
 }

@@ -1,0 +1,15 @@
+/bin/
+/dist/
+
+/masker
+/masker.exe
+
+/output.txt
+*.masked.txt
+
+*.test
+*.out
+coverage.html
+
+.idea/
+.vscode/

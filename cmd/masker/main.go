@@ -20,7 +20,7 @@ import (
 const exitInterrupted = 130
 
 func main() {
-	cfg, err := parseFlags(os.Args[0], os.Args[1:], os.Stderr)
+	cfg, err := parseFlags(filepath.Base(os.Args[0]), os.Args[1:], os.Stderr)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return
@@ -137,7 +137,22 @@ func openOutput(path string) (*output, error) {
 	if err != nil {
 		return nil, fmt.Errorf("создать временный файл: %w", err)
 	}
-	return &output{w: tmp, tmp: tmp, path: path}, nil
+
+	out := &output{w: tmp, tmp: tmp, path: path}
+	if err := tmp.Chmod(outputMode(path)); err != nil {
+		out.discard()
+		return nil, fmt.Errorf("права на временный файл: %w", err)
+	}
+
+	return out, nil
+}
+
+func outputMode(path string) os.FileMode {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0o644
+	}
+	return info.Mode().Perm()
 }
 
 func (o *output) commit() error {

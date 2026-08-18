@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,6 +51,41 @@ func TestRunKeepsPreviousOutputOnCancel(t *testing.T) {
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	assert.Len(t, entries, 2, "лишние файлы: %v", names(entries))
+}
+
+func TestRunCreatesOutputWithUsualMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("права доступа в Windows устроены иначе")
+	}
+
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.txt")
+	out := filepath.Join(dir, "out.txt")
+	require.NoError(t, os.WriteFile(in, []byte("1\n"), 0o600))
+
+	require.NoError(t, run(context.Background(), config{input: in, output: out}, discardLogger()))
+
+	info, err := os.Stat(out)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+}
+
+func TestRunKeepsModeOfExistingOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("права доступа в Windows устроены иначе")
+	}
+
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.txt")
+	out := filepath.Join(dir, "out.txt")
+	require.NoError(t, os.WriteFile(in, []byte("1\n"), 0o600))
+	require.NoError(t, os.WriteFile(out, []byte("старое"), 0o640))
+
+	require.NoError(t, run(context.Background(), config{input: in, output: out}, discardLogger()))
+
+	info, err := os.Stat(out)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o640), info.Mode().Perm())
 }
 
 func TestRunFailsOnMissingInput(t *testing.T) {

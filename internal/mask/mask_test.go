@@ -36,17 +36,13 @@ func TestDigitsMask(t *testing.T) {
 
 func TestDigitsMaskAvoidsAllocWithoutDigits(t *testing.T) {
 	const line = "строка совсем без цифр"
-	allocs := testingAllocs(func() { _ = mask.Digits{}.Mask(line) })
+	allocs := testing.AllocsPerRun(100, func() { _ = mask.Digits{}.Mask(line) })
 	assert.Zero(t, allocs, "маскирование строки без цифр не должно выделять память")
 }
 
 func TestMaskerFunc(t *testing.T) {
 	var m mask.Masker = mask.MaskerFunc(strings.ToUpper)
 	assert.Equal(t, "ABC", m.Mask("abc"))
-}
-
-func testingAllocs(fn func()) float64 {
-	return testing.AllocsPerRun(100, fn)
 }
 
 func BenchmarkDigitsMask(b *testing.B) {
